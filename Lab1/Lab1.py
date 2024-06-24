@@ -2,82 +2,83 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy import optimize
 from sympy import *
+import random
+
 
 phi = (1 + 5 ** 0.5) / 2
 
 
 # Вычисление значения функции
-def fun(f, x, y):
-    return f.subs([(X, x), (Y, y)]).evalf(15)
+def fun(f, point):
+    return f.subs([(symbols(f'x{i}'), point[i]) for i in range(len(point))]).evalf(15)
 
 
 # Вычисление градиента в точке
-def gradient(f, x, y):
-    return (diff(f, X).subs([(X, x), (Y, y)])).evalf(15), (diff(f, Y).subs([(X, x), (Y, y)])).evalf(15)
+def gradient(f, point):
+    vars = symbols(f'x0:{len(point)}')
+    grad = [diff(f, var).subs([(vars[i], point[i]) for i in range(len(point))]).evalf(15) for var in vars]
+    return grad
 
 
 # Условие останова
-def stop_condition(x, y, prev, eps):
-    return ((x - prev[0]) ** 2 + (y - prev[1]) ** 2) ** 0.5 < eps
-    # abs(f(x, y) - f(prev[0], prev[1])) >= eps
+def stop_condition(point, prev, eps):
+    return np.linalg.norm(np.array(point, dtype=float) - np.array(prev, dtype=float)) < eps
 
 
 # Градиентный спуск с фиксированным шагом
-def gradient_descent(f, start_point, learning_rate=0.05, eps=1e-5):
-    points = [(start_point[0], start_point[1])]
+def gradient_descent(f, start_point, learning_rate=1e-2, eps=1e-5, iters=1e7):
+    points = [start_point]
     counter = 0
-    while True:
-        grad = gradient(f, points[-1][0], points[-1][1])
-        x = points[-1][0] - learning_rate * grad[0]
-        y = points[-1][1] - learning_rate * grad[1]
-        if stop_condition(x, y, points[-1], eps):
+    while counter < iters:
+        grad = gradient(f, points[-1])
+        new_point = [points[-1][i] - learning_rate * grad[i] for i in range(len(points[-1]))]
+        if stop_condition(new_point, points[-1], eps):
             break
-        points.append((x, y))
+        points.append(new_point)
         counter += 1
-    return counter, points[-1], fun(f, points[-1][0], points[-1][1]), points, 0, counter
+    return counter, points[-1], fun(f, points[-1]), points, 0, counter
 
 
 # Метод дихотомии
-def dichotomy(f, x, y, grad_x, grad_y, eps=1e-5):
+def dichotomy(f, point, grad, eps=1e-5):
     func_counter = 0
     l = eps
-    r = 0.5
+    r = 100
     delta = eps / 2
 
     def step(rate):
-        return x - rate * grad_x, y - rate * grad_y
+        return [point[i] - rate * grad[i] for i in range(len(point))]
 
     while not r - l < eps:
         x1 = (r + l - delta) / 2
         x2 = (r + l + delta) / 2
-        if fun(f, *step(x1)) < fun(f, *step(x2)):
+        if fun(f, step(x1)) < fun(f, step(x2)):
             r = x2
         else:
             l = x1
         func_counter += 2
 
-    return r + l / 2, func_counter
+    return (r + l) / 2, func_counter
 
 
 # Градиентный спуск на основе дихотомии
 def dichotomy_descent(f, start_point, eps=1e-5):
     func_counter = 0
     grad_counter = 0
-    points = [(start_point[0], start_point[1])]
+    points = [start_point]
     counter = 0
     while True:
-        grad = gradient(f, points[-1][0], points[-1][1])
+        counter += 1
+        grad = gradient(f, points[-1])
         grad_counter += 1
-        res = dichotomy(f, points[-1][0], points[-1][1], grad[0], grad[1], eps)
+        res = dichotomy(f, points[-1], grad, eps)
         learning_rate = res[0]
         func_counter += res[1]
-        x = points[-1][0] - learning_rate * grad[0]
-        y = points[-1][1] - learning_rate * grad[1]
-        if stop_condition(x, y, points[-1], eps):
+        new_point = [points[-1][i] - learning_rate * grad[i] for i in range(len(points[-1]))]
+        if stop_condition(new_point, points[-1], eps):
             break
-        points.append((x, y))
-        counter += 1
-    return counter, points[-1], fun(f, points[-1][0], points[-1][1]), points, func_counter, grad_counter
+        points.append(new_point)
+    return counter, points[-1], fun(f, points[-1]), points, func_counter, grad_counter
 
 
 # Метод Нелдера-Мида
@@ -87,54 +88,58 @@ def nelder_mead(f, x0, eps):
 
 
 # Метод золотого сечения
-def golden_ratio(f, x, y, grad_x, grad_y, eps=1e-5):
+def golden_ratio(f, point, grad, eps=1e-5):
     func_counter = 0
     l = eps
-    r = 0.5
+    r = 100
 
     def step(rate):
-        return x - rate * grad_x, y - rate * grad_y
+        return [point[i] - rate * grad[i] for i in range(len(point))]
 
     while not r - l < eps:
         delta = (r - l) / phi
         x1 = r - delta
         x2 = l + delta
-        if fun(f, *step(x1)) < fun(f, *step(x2)):
+        if fun(f, step(x1)) < fun(f, step(x2)):
             r = x2
         else:
             l = x1
         func_counter += 2
 
-    return r + l / 2, func_counter
+    return (r + l) / 2, func_counter
 
 
 # Градиентный спуск на основе золотого сечения
 def golden_ratio_descent(f, start_point, eps=1e-5):
     func_counter = 0
     grad_counter = 0
-    points = [(start_point[0], start_point[1])]
+    points = [start_point]
     counter = 0
     while True:
-        grad = gradient(f, points[-1][0], points[-1][1])
+        counter += 1
+        grad = gradient(f, points[-1])
         grad_counter += 1
-        res = golden_ratio(f, points[-1][0], points[-1][1], grad[0], grad[1], eps)
+        res = golden_ratio(f, points[-1], grad, eps)
         learning_rate = res[0]
         func_counter += res[1]
-        x = points[-1][0] - learning_rate * grad[0]
-        y = points[-1][1] - learning_rate * grad[1]
-        if stop_condition(x, y, points[-1], eps):
+        new_point = [points[-1][i] - learning_rate * grad[i] for i in range(len(points[-1]))]
+        if stop_condition(new_point, points[-1], eps):
             break
-        points.append((x, y))
-        counter += 1
-    return counter, points[-1], fun(f, points[-1][0], points[-1][1]), points, func_counter, grad_counter
+        points.append(new_point)
+    return counter, points[-1], fun(f, points[-1]), points, func_counter, grad_counter
+
+
+# Все реализованные методы
+methods = ['constant', 'dichotomy', 'nelder_mead', 'golden_ratio']
 
 
 # Вывод графика функции и её линий уровня
 def draw(sym, f, Xs, Ys, name, points, counter):
     xs = [points[i][0] for i in range(counter)]
     ys = [points[i][1] for i in range(counter)]
-    zs = [fun(sym, xs[i], ys[i]) for i in range(counter)]
+    zs = [fun(sym, [xs[i], ys[i]]) for i in range(counter)]
     Zs = f(Xs, Ys)
+
     plt.figure()
     ax = plt.axes(projection='3d')
     ax.plot_surface(Xs, Ys, Zs, cmap='viridis', alpha=0.5)
@@ -145,6 +150,7 @@ def draw(sym, f, Xs, Ys, name, points, counter):
     ax.legend()
     plt.title("График функции. " + name)
     plt.show()
+
     plt.figure()
     plt.contour(Xs, Ys, Zs, levels=20, cmap='viridis')
     plt.plot(xs, ys, color='r')
@@ -160,76 +166,69 @@ def draw(sym, f, Xs, Ys, name, points, counter):
 
 
 # Основная функция для получения результатов работы методов на переданной функции
-def testMethods(f, p, eps=1e-5, learning_rate=0.01):
-    res1 = gradient_descent(f, p, learning_rate, eps)
+def test_method(f, start_point, method='constant', bounds=(-1, 1), eps=1e-5):
+    assert method in methods
 
-    counter_grad = res1[0]
-    point_grad = res1[1]
-    val_grad = res1[2]
-    points_grad = res1[3]
-    fev_grad = res1[4]
-    gev_grad = res1[5]
-    distance = ((p[0] - point_grad[0]) ** 2 + (p[1] - point_grad[1]) ** 2) ** 0.5
-    x_range = np.linspace(float(point_grad[0] - distance), float(point_grad[0] + distance), 100)
-    y_range = np.linspace(float(point_grad[1] - distance), float(point_grad[1] + distance), 100)
-    Xs, Ys = np.meshgrid(x_range, y_range)
-    print("Градиентный спуск\n")
-    print(f"Количество итераций: {counter_grad}")
-    print(f"Полученная точка: {point_grad}")
-    print(f"Полученное значение функции: {val_grad}")
-    print(f"Количество вычислений функции: {fev_grad}")
-    print(f"Количество вычислений градиента: {gev_grad}")
+    if method == 'constant':
+        res = gradient_descent(f, start_point, eps=eps)
+    elif method == 'dichotomy':
+        res = dichotomy_descent(f, start_point, eps)
+    elif method == 'nelder_mead':
+        res = nelder_mead(lambdify([symbols(f'x0:{len(start_point)}')], f, 'numpy'), np.array(start_point), eps)
+    else:
+        res = golden_ratio_descent(f, start_point, eps)
 
-    res2 = dichotomy_descent(f, p, eps)
-    counter_dich = res2[0]
-    point_dich = res2[1]
-    val_dich = res2[2]
-    points_dich = res2[3]
-    fev_dich = res2[4]
-    gev_dich = res2[5]
-    print("\nДихотомия\n")
-    print(f"Количество итераций: {counter_dich}")
-    print(f"Полученная точка: {point_dich}")
-    print(f"Полученное значение функции: {val_dich}")
-    print(f"Количество вычислений функции: {fev_dich}")
-    print(f"Количество вычислений градиента: {gev_dich}")
+    counter, point, val, points, fev, gev = res
 
-    res3 = nelder_mead(lambdify([(X, Y)], f, 'scipy'), p, eps)
-    counter_nelder = res3[0]
-    point_nelder = res3[1]
-    val_nelder = res3[2]
-    points_nelder = res3[3]
-    fev_nelder = res3[4]
-    gev_nelder = res3[5]
-    print("\nНелдер-Мид\n")
-    print(f"Количество итераций: {counter_nelder}")
-    print(f"Полученная точка: {point_nelder}")
-    print(f"Полученное значение функции: {val_nelder}")
-    print(f"Количество вычислений функции: {fev_nelder}")
-    print(f"Количество вычислений градиента: {gev_nelder}")
+    print(method)
+    print(f"Количество итераций: {counter}")
+    print(f"Полученная точка: {point}")
+    print(f"Полученное значение функции: {val}")
+    print(f"Количество вычислений функции: {fev}")
+    print(f"Количество вычислений градиента: {gev}")
 
-    res4 = golden_ratio_descent(f, p, eps)
-    counter_gold = res4[0]
-    point_gold = res4[1]
-    val_gold = res4[2]
-    points_gold = res4[3]
-    fev_gold = res4[4]
-    gev_gold = res4[5]
-    print("\nЗолотое сечение\n")
-    print(f"Количество итераций: {counter_gold}")
-    print(f"Полученная точка: {point_gold}")
-    print(f"Полученное значение функции: {val_gold}")
-    print(f"Количество вычислений функции: {fev_gold}")
-    print(f"Количество вычислений градиента: {gev_gold}")
-    draw(f, lambdify((X, Y), f, 'numpy'), Xs, Ys, "Градиентный спуск", points_grad, counter_grad)
-    draw(f, lambdify((X, Y), f, 'numpy'), Xs, Ys, "Дихотомия", points_dich, counter_dich)
-    draw(f, lambdify((X, Y), f, 'numpy'), Xs, Ys, "Недлер-Мид", points_nelder, counter_nelder)
-    draw(f, lambdify((X, Y), f, 'numpy'), Xs, Ys, "Золотое сечение", points_gold, counter_gold)
+    if len(start_point) == 2:
+        Xs, Ys = np.meshgrid(np.linspace(bounds[0], bounds[1], 100), np.linspace(bounds[0], bounds[1], 100))
+        draw(f, lambdify(["x0", "x1"], f, 'numpy'), Xs, Ys, method, points, counter)
+
+
+# Тест функции для n переменных
+def test_n_dimensional(n, method='constant'):
+    variables = symbols(f'x0:{n}')
+    function = sum(v**2 for v in variables)
+    start_point = [-2] * n
+    test_method(function, start_point, method=method, bounds=(-1, 1), eps=1e-7)
+
+
+# Тест плохо обусловленной функции
+def test_poorly_conditioned(method='constant'):
+    X, Y = symbols('x0 x1')
+    rosenbrock = (1 - X) ** 2 + 100 * (Y - X ** 2) ** 2
+    test_method(rosenbrock, [-2, 1], method=method, bounds=(-5, 5), eps=1e-5)
+
+
+# Тест функции с шумом
+def test_noisy_function(method='constant'):
+    X, Y = symbols('x0 x1')
+    noisy_function = X ** 2 + Y ** 2 + random.uniform(-0.1, 0.1)
+    test_method(noisy_function, [-2, 2], method=method, bounds=(-4, 4), eps=1e-5)
+
+
+# Тест мультимодальной функции
+def test_multimodal_function(method='constant'):
+    X, Y = symbols('x0 x1')
+    rastrigin = 10 * 2 + (X ** 2 - 10 * cos(2 * pi * X)) + (Y ** 2 - 10 * cos(2 * pi * Y))
+    test_method(rastrigin, [-2, 2], method=method, bounds=(-30, 30), eps=1e-5)
 
 
 if __name__ == '__main__':
-    X, Y = symbols('x y')
-    # f1 = -cos(X) * cos(Y) * exp(-((X - pi) ** 2 + (Y - pi) ** 2))
-    # testMethods(f1, (1.6, 1.6), 1e-5)
-    f2 = X ** 2 + Y ** 2
-    testMethods(f2, (-2, 2), 1e-7)
+    X, Y = symbols('x0 x1')
+
+    f = X ** 2 + Y ** 2
+    # f = -cos(X) * cos(Y) * exp(-((X - pi) ** 2 + (Y - pi) ** 2))
+    # test_method(f=f, start_point=[-2, 2], method='constant', bounds=(-8, 8), eps=1e-5)
+
+    # test_n_dimensional(3, method='constant')
+    # test_poorly_conditioned(method='constant')
+    # test_noisy_function(method='constant')
+    # test_multimodal_function(method='constant')
